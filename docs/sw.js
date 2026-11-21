@@ -1,5 +1,5 @@
 // 小金庫 Service Worker：只快取 App 本身的檔案，資料一律走網路、不快取。
-var CACHE = 'xjk-v3';
+var CACHE = 'xjk-v4';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
