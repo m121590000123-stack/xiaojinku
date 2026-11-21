@@ -1,0 +1,13 @@
+# 白名單：GitHub 上只放 App 前端（docs/）。
+# 其他一律不上傳：後端程式與初始金額（apps-script/）、規格書（CLAUDE.md）、
+# 捷徑檔（shortcut/）、clasp 設定、部署網址、金鑰。
+/*
+!/.gitignore
+!/README.md
+!/docs/
+
+.DS_Store
+*.local.*
+.clasp.json
+.clasprc.json
+.env*
