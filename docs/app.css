@@ -188,3 +188,17 @@ input.amount { font-size: 34px; font-weight: 700; min-height: 64px; text-align: 
 .bal-row + .bal-row { border-top: 1px solid var(--line); }
 .bal-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; padding-top: 10px; border-top: 2px solid var(--line); font-weight: 700; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ---------- v3：報表 ---------- */
+.top-right { display: flex; gap: 2px; }
+.card h2 .grow { flex: 1; }
+.tappable { cursor: pointer; }
+.tappable:active { opacity: .85; }
+.stackbar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--track); margin: 6px 0 10px; }
+.stackbar i { display: block; height: 100%; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.catrow { padding: 10px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.catrow:first-of-type { border-top: 0; }
+.catrow:active { opacity: .7; }
+.hbar-lite { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; margin: 6px 0 4px; }
+.hbar-lite i { display: block; height: 100%; background: var(--debt); border-radius: 3px; opacity: .8; }
