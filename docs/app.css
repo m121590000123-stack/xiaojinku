@@ -202,3 +202,8 @@ input.amount { font-size: 34px; font-weight: 700; min-height: 64px; text-align: 
 .catrow:active { opacity: .7; }
 .hbar-lite { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; margin: 6px 0 4px; }
 .hbar-lite i { display: block; height: 100%; background: var(--debt); border-radius: 3px; opacity: .8; }
+
+/* ---------- v3.1：遮住金額、可復原的提示 ---------- */
+.masked { letter-spacing: .12em; color: var(--text2); }
+#toast.has-action { display: flex; align-items: center; gap: 14px; pointer-events: auto; }
+#toast button { border: 0; background: transparent; color: var(--bg); font-weight: 700; font-size: 15px; min-height: 36px; padding: 0 4px; text-decoration: underline; cursor: pointer; }
