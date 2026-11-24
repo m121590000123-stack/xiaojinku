@@ -46,15 +46,24 @@
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
 
   var toastTimer;
-  function toast(msg) {
+  function toast(msg, action) {
     var t = document.getElementById('toast');
     t.textContent = msg;
+    t.classList.toggle('has-action', !!action);
+    if (action) {
+      var b = document.createElement('button');
+      b.textContent = action.label;
+      b.onclick = function () { t.classList.remove('show'); clearTimeout(toastTimer); action.fn(); };
+      t.appendChild(b);
+    }
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, action ? 5000 : 2600);
   }
 
   var ICON = {
+    eye: '<svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+    eyeOff: '<svg class="i" viewBox="0 0 24 24"><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>',
     plus: '<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     refresh: '<svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
     lock: '<svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
@@ -260,17 +269,18 @@
   }
 
   // ---------- 解鎖（密碼／Face ID） ----------
-  function lock(msg) {
+  function lock(msg, manual) {
     if (S.session) api('logout', {}, { noLock: true }).catch(function () {});
     S.session = null;
     S.data = null;
     S.months = {};
     $$('.sheet-wrap').forEach(function (w) { w.parentNode.removeChild(w); });
-    renderUnlock(msg);
+    renderUnlock(msg, { noAuto: !!manual });
   }
 
   function onUnlocked(r) {
     S.session = r.session;
+    S.hide = true;
     S.meta = r.meta;
     if (r.meta && r.meta.theme) theme(r.meta.theme);
     S.sub = null;
@@ -287,7 +297,7 @@
     });
   }
 
-  function faceIdLogin(m) {
+  function faceIdLogin(m, auto) {
     var ch = S.pkCh;
     if (!ch || Date.now() - ch.at > 240000) {
       m.textContent = '準備中，請再按一次';
@@ -318,13 +328,13 @@
     }).catch(function (e) {
       S.busy = false;
       if (e && e.resp && e.resp.unknownKey) lsSet(LS_PK, null);
-      if (e && e.name === 'NotAllowedError') m.textContent = '已取消，可以再按一次或輸入密碼';
+      if (e && e.name === 'NotAllowedError') m.textContent = auto ? '' : '已取消，可以再按一次或輸入密碼';
       else m.textContent = e && e.offline ? '需要網路才能解鎖' : ((e && e.message) || 'Face ID 失敗，請輸入密碼');
       fetchChallenge().catch(function () {});
     });
   }
 
-  function renderUnlock(msg) {
+  function renderUnlock(msg, opts) {
     tabs.classList.add('hidden');
     var pin = '';
     var face = hasFaceId();
@@ -373,7 +383,10 @@
     };
     if (face) {
       $('#faceBtn').onclick = function () { if (!S.busy) faceIdLogin(m); };
-      fetchChallenge().catch(function (e) { if (e.resp && /還沒啟用/.test(e.message)) { lsSet(LS_PK, null); $('#faceBtn').classList.add('hidden'); } });
+      fetchChallenge().then(function () {
+        // 打開 App 時自動跳出 Face ID；自己按「鎖定」時不自動跳
+        if (!(opts && opts.noAuto) && !document.hidden && $('#faceBtn') && !S.busy) faceIdLogin(m, true);
+      }).catch(function (e) { if (e.resp && /還沒啟用/.test(e.message)) { lsSet(LS_PK, null); $('#faceBtn').classList.add('hidden'); } });
     }
   }
 
@@ -487,6 +500,17 @@
   }
 
 
+  // ---------- 遮住資產金額（像網銀的小眼睛） ----------
+  function hid(html) { return S.hide ? '<span class="masked">••••</span>' : html; }
+  function maskNums(text) { return String(text).replace(/[−-]?\$?[\d,]+(\.\d+)?\s*(萬|元|美元|個月)?/g, '••'); }
+  function eyeBtn() {
+    return '<button class="icon-btn" data-act="eye" aria-label="' + (S.hide ? '顯示金額' : '隱藏金額') + '">' + (S.hide ? ICON.eyeOff : ICON.eye) + '</button>';
+  }
+  function bindEye() {
+    var b = $('[data-act="eye"]');
+    if (b) b.onclick = function () { S.hide = !S.hide; go(S.page, { keepScroll: true }); };
+  }
+
   // ---------- 首頁 ----------
   function pageHome() { renderHome(S.data.home); }
 
@@ -506,10 +530,11 @@
         vtiBody += '<div class="muted" style="margin-top:6px">加碼階梯都已完成</div>';
       }
     }
-    var tips = (d.suggestions || []).map(function (s) { return '<p>' + esc(s.text) + '</p>'; }).join('') || '<p>目前一切正常，繼續保持。</p>';
+    var tips = (d.suggestions || []).map(function (s) { return '<p>' + esc(S.hide && /預備金|淨資產/.test(s.text) ? maskNums(s.text) : s.text) + '</p>'; }).join('') || '<p>目前一切正常，繼續保持。</p>';
 
     app.innerHTML =
       header('小金庫', '更新於 ' + esc(d.asOf),
+        eyeBtn() +
         '<button class="icon-btn" data-act="add" aria-label="記一筆">' + ICON.plus + '</button>' +
         '<button class="icon-btn" data-act="refresh" aria-label="重新整理">' + ICON.refresh + '</button>' +
         '<button class="icon-btn" data-act="lock" aria-label="鎖定">' + ICON.lock + '</button>') +
@@ -519,31 +544,32 @@
       '<div class="big num">' + money(sp.month) + '</div>' +
       '<div class="muted" style="margin-top:4px">到 ' + sp.day + ' 號・比上個月同期 ' + deltaText(sp.pct) + '</div></section>' +
       '<section class="card full"><h2>淨資產</h2>' +
-      '<div class="big num ' + (d.netWorth < 0 ? 'debt' : '') + '">' + money(d.netWorth) + '</div>' +
-      '<div class="row" style="margin-top:6px"><span class="muted">資產 <b class="asset num">' + money(d.assets) + '</b></span><span class="muted">負債 <b class="debt num">' + money(d.debtTotal) + '</b></span></div>' +
-      sparkline((d.trend || []).map(function (t) { return t.net; })) +
+      '<div class="big num ' + (d.netWorth < 0 && !S.hide ? 'debt' : '') + '">' + hid(money(d.netWorth)) + '</div>' +
+      '<div class="row" style="margin-top:6px"><span class="muted">資產 <b class="asset num">' + hid(money(d.assets)) + '</b></span><span class="muted">負債 <b class="debt num">' + hid(money(d.debtTotal)) + '</b></span></div>' +
+      (S.hide ? '' : sparkline((d.trend || []).map(function (t) { return t.net; }))) +
       '</section>' +
-      '<section class="card"><h2>300 萬進度</h2><div class="mid num">' + d.invest.pct + '%</div>' +
-      '<div class="bar"><i style="width:' + pct(d.invest.pct) + '%"></i></div>' +
-      '<div class="muted num">' + wan(d.invest.value) + ' / ' + wan(d.invest.goal) + '</div>' +
-      (d.invest.vxus ? '<div class="muted num" style="font-size:12px">VTI ' + wan(d.invest.vti) + '・VXUS ' + wan(d.invest.vxus) + '</div>' : '') + '</section>' +
-      '<section class="card"><h2>預備金</h2><div class="mid num">' + em.months + ' <span style="font-size:15px;font-weight:500">個月</span></div>' +
-      '<div class="bar ' + (em.months < em.target ? 'warn' : '') + '"><i style="width:' + pct(em.months / em.target * 100) + '%"></i></div>' +
-      '<div class="muted num">目標 ' + em.target + ' 個月・' + wan(em.amount) + '</div></section>' +
+      '<section class="card"><h2>300 萬進度</h2><div class="mid num">' + hid(d.invest.pct + '%') + '</div>' +
+      '<div class="bar"><i style="width:' + (S.hide ? 0 : pct(d.invest.pct)) + '%"></i></div>' +
+      '<div class="muted num">' + hid(wan(d.invest.value)) + ' / ' + wan(d.invest.goal) + '</div>' +
+      (d.invest.vxus && !S.hide ? '<div class="muted num" style="font-size:12px">VTI ' + wan(d.invest.vti) + '・VXUS ' + wan(d.invest.vxus) + '</div>' : '') + '</section>' +
+      '<section class="card"><h2>預備金</h2><div class="mid num">' + hid(String(em.months)) + ' <span style="font-size:15px;font-weight:500">個月</span></div>' +
+      '<div class="bar ' + (em.months < em.target ? 'warn' : '') + '"><i style="width:' + (S.hide ? 0 : pct(em.months / em.target * 100)) + '%"></i></div>' +
+      '<div class="muted num">目標 ' + em.target + ' 個月・' + hid(wan(em.amount)) + '</div></section>' +
       '<section class="card"><h2>VTI 加碼提醒</h2>' + vtiBody + '</section>' +
       '<section class="card"><h2>負債</h2>' + d.debts.map(function (x) {
-        return '<div class="row"><span class="muted" style="font-size:14px">' + esc(x.name) + '</span><span class="num debt" style="font-weight:600">' + wan(x.balance) + '</span></div>';
+        return '<div class="row"><span class="muted" style="font-size:14px">' + esc(x.name) + '</span><span class="num debt" style="font-weight:600">' + hid(wan(x.balance)) + '</span></div>';
       }).join('') + '</section>' +
       '<section class="card full tip tips"><h2>' + ICON.bulb + '建議</h2>' + tips +
       '<button class="chip-btn" data-act="report2">看報表、問 Claude</button></section>' +
       '</div>';
 
+    bindEye();
     $('[data-act="add"]').onclick = function () { addSheet(); };
     $('[data-act="refresh"]').onclick = function () {
       var s = $('#topSub'); if (s) s.innerHTML = '<span class="updating">更新中…</span>';
       refreshAll().catch(function () { var s2 = $('#topSub'); if (s2) s2.textContent = '更新失敗，顯示的是上次的數字'; });
     };
-    $('[data-act="lock"]').onclick = function () { lock(); };
+    $('[data-act="lock"]').onclick = function () { lock(null, true); };
     $('[data-act="report"]').onclick = function () { reportMonth = null; go('report'); };
     $('[data-act="report2"]').onclick = function () { reportMonth = null; go('report'); };
   }
@@ -681,14 +707,22 @@
           adjustSpend(t, 1);
         }, function () { return api('edit', payload); }, '已修改');
       };
-      var delBtn = $('[data-del]', s.el), armed = false;
-      delBtn.onclick = function () {
-        if (!armed) { armed = true; delBtn.textContent = '再按一次確定刪除'; return; }
+      $('[data-del]', s.el).onclick = function () {
         s.close();
-        optimistic(function () {
+        var pos = items().indexOf(t);
+        var delP = optimistic(function () {
           var arr = items(); var i = arr.indexOf(t); if (i >= 0) arr.splice(i, 1);
           adjustSpend(t, -1);
-        }, function () { return api('delete', { id: t.id }); }, '已刪除');
+        }, function () { return api('delete', { id: t.id }); });
+        toast('已刪除「' + t.category + ' ' + money(t.amount) + '」', {
+          label: '復原',
+          fn: function () {
+            optimistic(function () {
+              var arr = items(); if (arr.indexOf(t) < 0) arr.splice(Math.max(0, Math.min(pos, arr.length)), 0, t);
+              adjustSpend(t, 1);
+            }, function () { return delP.then(function () { return api('restore', { id: t.id }); }); }, '已復原');
+          },
+        });
       };
     });
   }
@@ -829,10 +863,10 @@
     var d = S.data.trends;
     var worth = d.worth || [];
     var flow = d.flow || [];
-    app.innerHTML = header('趨勢') +
+    app.innerHTML = header('趨勢', '', eyeBtn()) +
       '<div class="stack">' +
       '<section class="card"><h2>淨資產與投資資產</h2>' +
-      (worth.length ? lineChart(worth.map(function (w) { return Number(w.month.slice(5)) + '月'; }), [
+      (S.hide ? '<div class="muted">金額已隱藏，點右上角的眼睛顯示。</div>' : worth.length ? lineChart(worth.map(function (w) { return Number(w.month.slice(5)) + '月'; }), [
         { values: worth.map(function (w) { return w.net; }), color: 'var(--asset)' },
         { values: worth.map(function (w) { return w.invest; }), color: 'var(--warn)', dash: true },
       ]) + '<div class="legend"><span><i style="background:var(--asset)"></i>淨資產</span><span><i style="background:var(--warn)"></i>投資資產</span></div>'
@@ -842,6 +876,7 @@
       '<div class="legend"><span><i style="background:var(--asset)"></i>收入</span><span><i style="background:var(--debt)"></i>支出（保險按月攤提）</span></div></section>' +
       '<div class="muted" style="text-align:center">各分類花費在「報表」頁</div>' +
       '</div>';
+    bindEye();
   }
 
   // ---------- 帳戶 ----------
@@ -867,11 +902,11 @@
 
     var balances = info.last
       ? accounts.map(function (a) {
-        return '<div class="bal-row"><span>' + esc(short(a)) + '</span><span class="num">' + (last[a] == null ? '—' : money(last[a])) + '</span></div>';
+        return '<div class="bal-row"><span>' + esc(short(a)) + '</span><span class="num">' + (last[a] == null ? '—' : hid(money(last[a]))) + '</span></div>';
       }).join('') +
-      '<div class="bal-row"><span>VTI</span><span class="num">' + (last.shares || 0) + ' 股</span></div>' +
-      (last.vxusShares ? '<div class="bal-row"><span>VXUS</span><span class="num">' + last.vxusShares + ' 股</span></div>' : '') +
-      '<div class="bal-total"><span>現金合計</span><span class="num">' + money(cashTotal) + '</span></div>'
+      '<div class="bal-row"><span>VTI</span><span class="num">' + hid((last.shares || 0) + ' 股') + '</span></div>' +
+      (last.vxusShares ? '<div class="bal-row"><span>VXUS</span><span class="num">' + hid(last.vxusShares + ' 股') + '</span></div>' : '') +
+      '<div class="bal-total"><span>現金合計</span><span class="num">' + hid(money(cashTotal)) + '</span></div>'
       : '<div class="muted">還沒對帳過。按下面的按鈕，填入各帳戶目前的餘額。</div>';
 
     var form =
@@ -887,14 +922,14 @@
         '<div class="row" style="margin-bottom:14px"><span class="muted">實際 − 推算</span><span class="num" id="diff">—</span></div>' : '') +
       '<button class="btn" id="rec">完成對帳</button><button class="btn ghost" id="recCancel">先不要</button>';
 
-    app.innerHTML = header('帳戶', info.last ? '上次對帳 ' + esc(info.last.date) : '還沒對帳過') +
+    app.innerHTML = header('帳戶', info.last ? '上次對帳 ' + esc(info.last.date) : '還沒對帳過', eyeBtn()) +
       '<section class="card"><h2>各帳戶餘額</h2>' + balances +
       '<button class="btn" id="recOpen" style="margin-top:14px">開始對帳</button>' +
       '<div id="recForm" class="hidden" style="margin-top:16px">' + form + '</div></section>' +
 
       '<div class="section-title">負債</div><div class="list">' + home.debts.map(function (d) {
         return '<div class="item"><div class="grow"><div class="title">' + esc(d.name) + '</div><div class="meta">利率 ' + (d.rate * 100).toFixed(3).replace(/\.?0+$/, '') + '%' +
-          (d.monthlyInterest ? '・每月利息約 ' + money(d.monthlyInterest) : '') + (d.deferDate ? '・延繳到期 ' + esc(d.deferDate) : '') + '</div></div><div class="amt num debt">' + money(d.balance) + '</div></div>';
+          (d.monthlyInterest && !S.hide ? '・每月利息約 ' + money(d.monthlyInterest) : '') + (d.deferDate ? '・延繳到期 ' + esc(d.deferDate) : '') + '</div></div><div class="amt num debt">' + hid(money(d.balance)) + '</div></div>';
       }).join('') + '</div>' +
 
       '<div class="section-title monthnav"><button class="icon-btn" data-m="-1" aria-label="上個月">' + ICON.left + '</button><span>' + esc(monthLabel(list.month)) + '明細</span>' +
@@ -907,6 +942,7 @@
           '<div class="meta">' + esc(t.date.slice(5)) + '・' + esc(t.type) + '・' + esc(t.source) + '</div></div><div class="amt num ' + cls + '">' + sign + money(t.amount) + '</div>' + ICON.chev + '</div>';
       }).join('') : '<div class="empty">這個月還沒有紀錄</div>') + '</div>';
     bindMoney(app);
+    bindEye();
 
     var formEl = $('#recForm'), openBtn = $('#recOpen');
     openBtn.onclick = function () { formEl.classList.remove('hidden'); openBtn.classList.add('hidden'); };
@@ -990,9 +1026,9 @@
       '<div class="section-title">這台手機</div>' +
       '<div class="menu"><button id="lockNow"><span class="grow">立即鎖定</span>' + ICON.chev + '</button>' +
       '<button id="forget"><span class="grow debt">清除這台手機的設定</span>' + ICON.chev + '</button></div>' +
-      '<div class="muted" style="text-align:center;margin-top:16px">小金庫 v3</div>';
+      '<div class="muted" style="text-align:center;margin-top:16px">小金庫 v3.1</div>';
     $$('[data-sub]').forEach(function (b) { b.onclick = function () { S.sub = b.getAttribute('data-sub'); window.scrollTo(0, 0); renderSub(); }; });
-    $('#lockNow').onclick = function () { lock(); };
+    $('#lockNow').onclick = function () { lock(null, true); };
     $('#forget').onclick = function () {
       ask('清除這台手機的設定？', '清除後要重新貼上 App 設定碼才能使用。試算表裡的資料不會受影響。', '清除', true).then(function (ok) {
         if (!ok) return;
